@@ -1,0 +1,73 @@
+version: '3.3'
+
+services:
+  redis-master:
+    image: redis:5.0.5-alpine3.9
+    command:
+     - "redis-server"
+     - "--protected-mode no"
+     - "--appendonly yes"
+     - "--maxmemory 6gb"
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints: [node.role == manager] # assume only 1 manager setup
+      restart_policy:
+        condition: on-failure
+      resources:
+        limits:
+          memory: "6656M"
+      networks:
+        - sso_network
+    
+  redis-slave:
+    image: redis:5.0.5-alpine3.9
+    command:
+     - "redis-server"
+     - "--protected-mode no"
+     - "--appendonly yes"
+     - "--maxmemory 6gb"
+     - "--slaveof redis-master 6379"
+    deploy:
+      mode: global
+      placement:
+        constraints: [node.role == worker] # assume only 1 manager setup
+      restart_policy:
+        condition: on-failure
+      resources:
+        limits:
+          memory: "6656M"
+      networks:
+        - sso_network
+
+redis-sentinel:
+    image: redis:5.0.5-alpine3.9
+    command: >
+      sh -c "echo 'port 26379' > sentinel.conf &&
+      echo 'dir /tmp' >> sentinel.conf &&
+      echo 'sentinel monitor master redis-master 6379 2' >> sentinel.conf &&
+      echo 'sentinel down-after-milliseconds' master 1000' >> sentinel.conf &&
+      echo 'sentinel parallel-syncs master 1' >> sentinel.conf &&
+      echo 'sentinel failover-timeout master 1000' >> sentinel.conf &&
+      echo 'maxmemory 2gb' >> sentinel.conf &&
+      cat sentinel.conf &&
+      redis-server sentinel.conf --sentinel"
+    deploy:
+      mode: global
+      placement:
+        constraints: [node.role == worker] # assume only 1 manager setup
+      restart_policy:
+        condition: on-failure
+        delay: 3s
+      resources:
+        limits:
+          memory: "3G"
+      networks:
+        - sso_network
+
+networks:
+  sso_network:
+    driver: overlay
+    attachable: true
+    external: true
