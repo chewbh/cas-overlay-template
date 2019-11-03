@@ -1,0 +1,47 @@
+version: "3.3"
+
+services:
+  cas:
+    image: org.apereo.cas/cas:latest
+    ports:
+      - "8443:8443"
+      - "8080:8080"
+    volumes:
+      - "./cas-dev.properties:/etc/cas/config/cas.properties"
+    depends_on:
+      - redis-sentinel
+
+  redis-master:
+    image: redis:5.0.5-alpine3.9
+    command:
+      - "redis-server"
+      - "--protected-mode no"
+      - "--appendonly yes"
+      - "--maxmemory 6gb"
+
+  redis-slave:
+    image: redis:5.0.5-alpine3.9
+    command:
+      - "redis-server"
+      - "--protected-mode no"
+      - "--appendonly yes"
+      - "--maxmemory 6gb"
+      - "--slaveof redis-master 6379"
+    depends_on:
+      - redis-master
+
+  redis-sentinel:
+    image: redis:5.0.5-alpine3.9
+    command: >
+      sh -c "echo 'port 26379' > sentinel.conf &&
+      echo 'dir /tmp' >> sentinel.conf &&
+      echo 'sentinel monitor master redis-master 6379 2' >> sentinel.conf &&
+      echo 'sentinel down-after-milliseconds master 1000' >> sentinel.conf &&
+      echo 'sentinel parallel-syncs master 1' >> sentinel.conf &&
+      echo 'sentinel failover-timeout master 1000' >> sentinel.conf &&
+      echo 'maxmemory 2gb' >> sentinel.conf &&
+      cat sentinel.conf &&
+      redis-server sentinel.conf --sentinel"
+    depends_on:
+      - redis-master
+      - redis-slave
